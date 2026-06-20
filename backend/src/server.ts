@@ -24,10 +24,10 @@ function loadLevels(): LevelsData {
   }
 }
 
-function createBackup(): string | null {
+function createBackup(): { success: boolean; backupPath?: string; error?: string } {
   try {
     if (!fs.existsSync(LEVELS_FILE)) {
-      return null;
+      return { success: true, backupPath: undefined };
     }
     if (!fs.existsSync(BACKUP_DIR)) {
       fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -36,10 +36,11 @@ function createBackup(): string | null {
     const backupFile = path.join(BACKUP_DIR, `levels_${timestamp}.json`);
     fs.copyFileSync(LEVELS_FILE, backupFile);
     console.log(`✅ 已创建备份: ${path.basename(backupFile)}`);
-    return backupFile;
+    return { success: true, backupPath: backupFile };
   } catch (err) {
-    console.error('创建备份失败:', err);
-    return null;
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('创建备份失败:', errorMsg);
+    return { success: false, error: errorMsg };
   }
 }
 
@@ -133,19 +134,33 @@ function validateLevelsData(data: unknown): { valid: boolean; errors: string[] }
   return { valid: errors.length === 0, errors };
 }
 
-function saveLevels(data: LevelsData, createBackupFirst: boolean = true): boolean {
+function saveLevels(
+  data: LevelsData,
+  createBackupFirst: boolean = true
+): { success: boolean; backupPath?: string; error?: string } {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
+
+    let backupPath: string | undefined;
     if (createBackupFirst && fs.existsSync(LEVELS_FILE)) {
-      createBackup();
+      const backupResult = createBackup();
+      if (!backupResult.success) {
+        return {
+          success: false,
+          error: `备份创建失败: ${backupResult.error}`
+        };
+      }
+      backupPath = backupResult.backupPath;
     }
+
     fs.writeFileSync(LEVELS_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    return true;
+    return { success: true, backupPath };
   } catch (err) {
-    console.error('Failed to save levels:', err);
-    return false;
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('保存关卡数据失败:', errorMsg);
+    return { success: false, error: errorMsg };
   }
 }
 
@@ -191,8 +206,69 @@ app.get('/api/levels', (_req, res) => {
   });
 });
 
+app.get('/api/levels/export', (_req, res) => {
+  const data = loadLevels();
+
+  const validation = validateLevelsData(data);
+  if (!validation.valid) {
+    res.status(500).json({
+      success: false,
+      error: '导出数据校验失败，当前关卡数据结构不完整',
+      errors: validation.errors
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data,
+    exportedAt: new Date().toISOString(),
+    totalLevels: data.levels.length
+  });
+});
+
+app.post('/api/levels/import', (req, res) => {
+  const importData = req.body;
+
+  const validation = validateLevelsData(importData);
+  if (!validation.valid) {
+    res.status(400).json({
+      success: false,
+      error: '数据校验失败',
+      errors: validation.errors
+    });
+    return;
+  }
+
+  const saveResult = saveLevels(importData as LevelsData, true);
+
+  if (!saveResult.success) {
+    res.status(500).json({
+      success: false,
+      error: saveResult.error || '导入失败，数据未被修改'
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    message: `成功导入 ${importData.levels.length} 个关卡`,
+    backupCreated: saveResult.backupPath ? path.basename(saveResult.backupPath) : null,
+    importedLevels: importData.levels.length
+  });
+});
+
 app.get('/api/levels/:id', (req, res) => {
   const id = parseInt(req.params.id);
+
+  if (isNaN(id)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid level ID, must be a number'
+    });
+    return;
+  }
+
   const data = loadLevels();
   const level = data.levels.find((l: LevelData) => l.id === id);
 
@@ -212,6 +288,15 @@ app.get('/api/levels/:id', (req, res) => {
 
 app.get('/api/levels/:id/verify', (req, res) => {
   const id = parseInt(req.params.id);
+
+  if (isNaN(id)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid level ID, must be a number'
+    });
+    return;
+  }
+
   const edgeParam = req.query.edge as string;
 
   if (!edgeParam) {
@@ -297,64 +382,21 @@ app.post('/api/levels', (req, res) => {
     data.levels.push(newLevel);
   }
 
-  if (saveLevels(data)) {
-    res.json({
-      success: true,
-      level: newLevel
-    });
-  } else {
+  const saveResult = saveLevels(data, true);
+
+  if (!saveResult.success) {
     res.status(500).json({
       success: false,
-      error: 'Failed to save level'
+      error: saveResult.error || '保存关卡失败'
     });
+    return;
   }
-});
 
-app.get('/api/levels/export', (_req, res) => {
-  const data = loadLevels();
   res.json({
     success: true,
-    data,
-    exportedAt: new Date().toISOString(),
-    totalLevels: data.levels.length
+    level: newLevel,
+    backupCreated: saveResult.backupPath ? path.basename(saveResult.backupPath) : null
   });
-});
-
-app.post('/api/levels/import', (req, res) => {
-  const importData = req.body;
-
-  const validation = validateLevelsData(importData);
-  if (!validation.valid) {
-    res.status(400).json({
-      success: false,
-      error: '数据校验失败',
-      errors: validation.errors
-    });
-    return;
-  }
-
-  const backupPath = createBackup();
-  if (!backupPath && fs.existsSync(LEVELS_FILE)) {
-    res.status(500).json({
-      success: false,
-      error: '创建备份失败，已中止导入操作'
-    });
-    return;
-  }
-
-  if (saveLevels(importData as LevelsData, false)) {
-    res.json({
-      success: true,
-      message: `成功导入 ${importData.levels.length} 个关卡`,
-      backupCreated: backupPath ? path.basename(backupPath) : null,
-      importedLevels: importData.levels.length
-    });
-  } else {
-    res.status(500).json({
-      success: false,
-      error: '保存导入数据失败'
-    });
-  }
 });
 
 app.get('/api/health', (_req, res) => {

@@ -58,6 +58,7 @@ export async function exportLevels(): Promise<{
   exportedAt?: string;
   totalLevels?: number;
   error?: string;
+  errors?: string[];
 }> {
   try {
     const res = await fetch(`${API_BASE}/levels/export`);

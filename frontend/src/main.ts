@@ -132,7 +132,13 @@ btnExport.addEventListener('click', async () => {
       downloadJSON(result.data, filename);
       showToast(`✅ 导出成功！共 ${result.totalLevels} 个关卡`, 'success');
     } else {
-      showToast(`❌ 导出失败: ${result.error || '未知错误'}`, 'error');
+      if (result.errors && result.errors.length > 0) {
+        const errorMsg = result.errors.slice(0, 3).join('；');
+        const moreErrors = result.errors.length > 3 ? ` 等 ${result.errors.length} 个错误` : '';
+        showToast(`⚠️ 导出失败: 数据校验不通过 - ${errorMsg}${moreErrors}`, 'warning');
+      } else {
+        showToast(`❌ 导出失败: ${result.error || '未知错误'}`, 'error');
+      }
     }
   } catch (err) {
     showToast(`❌ 导出失败: ${err instanceof Error ? err.message : '未知错误'}`, 'error');
@@ -156,18 +162,21 @@ fileInput.addEventListener('change', async (e) => {
     try {
       importData = JSON.parse(text);
     } catch (parseErr) {
-      showToast(`❌ JSON解析失败: ${parseErr instanceof Error ? parseErr.message : '格式错误'}`, 'error');
+      showToast(`❌ 导入失败: JSON解析错误 - ${parseErr instanceof Error ? parseErr.message : '格式错误'}`, 'error');
       return;
     }
 
-    if (!confirm('确定要导入并覆盖当前所有关卡数据吗？此操作将自动创建备份。')) {
+    if (!confirm('确定要导入并覆盖当前所有关卡数据吗？\n\n导入前将自动创建备份，若备份失败则会中止操作。')) {
       return;
     }
 
     const result = await importLevels(importData);
 
     if (result.success) {
-      showToast(`✅ ${result.message}${result.backupCreated ? ` (备份: ${result.backupCreated})` : ''}`, 'success');
+      const backupInfo = result.backupCreated 
+        ? ` (已备份: ${result.backupCreated})` 
+        : '';
+      showToast(`✅ ${result.message}${backupInfo}`, 'success');
       if (game.getCurrentLevel() > (result.importedLevels || 0)) {
         await game.loadLevel(1);
       } else {
@@ -177,7 +186,9 @@ fileInput.addEventListener('change', async (e) => {
       if (result.errors && result.errors.length > 0) {
         const errorMsg = result.errors.slice(0, 3).join('；');
         const moreErrors = result.errors.length > 3 ? ` 等 ${result.errors.length} 个错误` : '';
-        showToast(`⚠️ 数据校验失败: ${errorMsg}${moreErrors}`, 'warning');
+        showToast(`⚠️ 导入失败: 数据校验不通过 - ${errorMsg}${moreErrors}`, 'warning');
+      } else if (result.error && result.error.includes('备份')) {
+        showToast(`❌ 导入失败: ${result.error}，数据未被修改`, 'error');
       } else {
         showToast(`❌ 导入失败: ${result.error || '未知错误'}`, 'error');
       }
