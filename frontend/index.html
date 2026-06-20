@@ -91,6 +91,61 @@
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
       }
+      .btn-secondary {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      }
+      .btn-secondary:hover {
+        box-shadow: 0 6px 20px rgba(17, 153, 142, 0.4);
+      }
+      .btn-warning {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+      .btn-warning:hover {
+        box-shadow: 0 6px 20px rgba(245, 87, 108, 0.4);
+      }
+      #toast-container {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        pointer-events: auto;
+      }
+      .toast {
+        padding: 12px 24px;
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        margin-bottom: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        animation: slideDown 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+        max-width: 500px;
+      }
+      .toast.success {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      }
+      .toast.error {
+        background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+      }
+      .toast.warning {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+      @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes fadeOut {
+        to { opacity: 0; transform: translateY(-10px); }
+      }
+      #file-input {
+        display: none;
+      }
+      #backup-controls {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        pointer-events: auto;
+      }
       #complete-modal {
         position: absolute;
         top: 50%;
@@ -130,6 +185,8 @@
   </head>
   <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="toast-container"></div>
+    <input type="file" id="file-input" accept=".json" />
     <div id="ui-layer">
       <div class="hud" id="level-info">
         <div>第 <span id="level-num">1</span> 关</div>
@@ -150,6 +207,10 @@
         <button class="btn" id="btn-undo">撤销连线</button>
         <button class="btn" id="btn-reset">重置本关</button>
         <button class="btn" id="btn-hint">显示频率</button>
+      </div>
+      <div id="backup-controls">
+        <button class="btn btn-secondary" id="btn-export">导出关卡</button>
+        <button class="btn btn-warning" id="btn-import">导入关卡</button>
       </div>
       <div id="complete-modal">
         <h2 id="modal-title">✨ 星座完成 ✨</h2>

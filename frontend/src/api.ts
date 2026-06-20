@@ -51,3 +51,48 @@ export async function healthCheck(): Promise<boolean> {
     return false;
   }
 }
+
+export async function exportLevels(): Promise<{
+  success: boolean;
+  data?: unknown;
+  exportedAt?: string;
+  totalLevels?: number;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`${API_BASE}/levels/export`);
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : '导出失败'
+    };
+  }
+}
+
+export async function importLevels(levelsData: unknown): Promise<{
+  success: boolean;
+  message?: string;
+  backupCreated?: string;
+  importedLevels?: number;
+  error?: string;
+  errors?: string[];
+}> {
+  try {
+    const res = await fetch(`${API_BASE}/levels/import`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(levelsData)
+    });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : '导入失败'
+    };
+  }
+}

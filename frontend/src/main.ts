@@ -1,6 +1,6 @@
 import { Game } from './game';
 import type { LevelData } from './types';
-import { healthCheck } from './api';
+import { healthCheck, exportLevels, importLevels } from './api';
 
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
 const game = new Game(canvas);
@@ -20,8 +20,34 @@ const btnUndo = document.getElementById('btn-undo') as HTMLButtonElement;
 const btnReset = document.getElementById('btn-reset') as HTMLButtonElement;
 const btnHint = document.getElementById('btn-hint') as HTMLButtonElement;
 const btnNext = document.getElementById('btn-next') as HTMLButtonElement;
+const btnExport = document.getElementById('btn-export') as HTMLButtonElement;
+const btnImport = document.getElementById('btn-import') as HTMLButtonElement;
+const fileInput = document.getElementById('file-input') as HTMLInputElement;
+const toastContainer = document.getElementById('toast-container') as HTMLDivElement;
 
 const MAX_LEVELS = 3;
+
+function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success'): void {
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+  setTimeout(() => {
+    toast.remove();
+  }, 3000);
+}
+
+function downloadJSON(data: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 game.setCallbacks({
   onLevelChange: (level: LevelData) => {
@@ -95,6 +121,70 @@ btnNext.addEventListener('click', async () => {
   completeModal.classList.remove('show');
   btnHint.textContent = '显示频率';
   await game.loadLevel(nextLevel);
+});
+
+btnExport.addEventListener('click', async () => {
+  try {
+    const result = await exportLevels();
+    if (result.success && result.data) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `levels_export_${timestamp}.json`;
+      downloadJSON(result.data, filename);
+      showToast(`✅ 导出成功！共 ${result.totalLevels} 个关卡`, 'success');
+    } else {
+      showToast(`❌ 导出失败: ${result.error || '未知错误'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`❌ 导出失败: ${err instanceof Error ? err.message : '未知错误'}`, 'error');
+  }
+});
+
+btnImport.addEventListener('click', () => {
+  fileInput.value = '';
+  fileInput.click();
+});
+
+fileInput.addEventListener('change', async (e) => {
+  const target = e.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    let importData: unknown;
+
+    try {
+      importData = JSON.parse(text);
+    } catch (parseErr) {
+      showToast(`❌ JSON解析失败: ${parseErr instanceof Error ? parseErr.message : '格式错误'}`, 'error');
+      return;
+    }
+
+    if (!confirm('确定要导入并覆盖当前所有关卡数据吗？此操作将自动创建备份。')) {
+      return;
+    }
+
+    const result = await importLevels(importData);
+
+    if (result.success) {
+      showToast(`✅ ${result.message}${result.backupCreated ? ` (备份: ${result.backupCreated})` : ''}`, 'success');
+      if (game.getCurrentLevel() > (result.importedLevels || 0)) {
+        await game.loadLevel(1);
+      } else {
+        await game.loadLevel(game.getCurrentLevel());
+      }
+    } else {
+      if (result.errors && result.errors.length > 0) {
+        const errorMsg = result.errors.slice(0, 3).join('；');
+        const moreErrors = result.errors.length > 3 ? ` 等 ${result.errors.length} 个错误` : '';
+        showToast(`⚠️ 数据校验失败: ${errorMsg}${moreErrors}`, 'warning');
+      } else {
+        showToast(`❌ 导入失败: ${result.error || '未知错误'}`, 'error');
+      }
+    }
+  } catch (err) {
+    showToast(`❌ 导入失败: ${err instanceof Error ? err.message : '未知错误'}`, 'error');
+  }
 });
 
 async function init(): Promise<void> {
